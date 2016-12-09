@@ -1,0 +1,290 @@
+---
+title: "MLM"
+author: "Bae No.2"
+date: "October 25, 2016"
+output: html_document
+---
+
+
+
+```{r load-packages, message=FALSE, warning=FALSE}
+library(rstan)
+library(lme4)
+library(foreign)
+library(nlme)
+library(lmtest)
+library(plyr)
+```
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+data2 <- read.dta("Election2016.dta")
+#data <- read.dta("votesRepubThru2012.dta")
+edu <- read.csv("education_level_state.csv")
+gen.age <- read.csv("sex_origin.csv")
+unique(data2$pctRep12)
+
+
+edu$state <- tolower(edu$state)
+data2 <- merge(data2, edu, by = "state")
+data2 <- rename(data2, c("highschool_higher_percent" = "HS", "bachelor_higher_percent" = "BS"))
+head(data2)
+
+```
+
+
+
+**0. Unconditional Model**
+
+We first fit an unconditional model with varying intercepts. Let $i$ indicate poll and $j$ indicate state, then percent Democrat $Y_{ij}$ is modeled as: 
+$$
+Y_{ij} = b_0 + \zeta_{0j} + \epsilon_{ij},
+$$
+where $\zeta_{0j} \sim N(0,\sigma_{\zeta_0}^2)$ and $\epsilon_{ij} \sim N(0, \sigma_{\epsilon}^2)$, independently of one another. ICC is 0.915, meaning that $91.5 \%$ of the variance is explained by between states. 
+
+
+```{r results='hide', message=FALSE, warning=FALSE}
+## Step 1. Run unconditional model
+head(data2)
+ucm <- lmer(DemPctHead2Head ~ (1|id), data = data2)
+summary(ucm)
+0.008227/(0.008227+0.000762)
+```
+
+**1. Model with Covariates and Varying Slopes**
+
+We now fit the following model: 
+$$
+Y_{ij} = b_0 + b_1(pctRep8_{ij}) + b_2(pctRep12_{ij}) + b_3(Time_{ij}) + \zeta_{ij}(Time_{ij}) + \zeta_{0j} + \epsilon_{ij}
+$$
+
+We include three covariates -- percent Republican in the years 2008 and 2012, and time of the poll. Time represents the number of days before the actual election, but converted to unit in years. Note that Time is negative and takes 0 on the day of the election. 
+
+We allow slopes of Time to vary by state. This means that we consider the effect of time on percent Democrat to differ by state -- some states may be very stable and always support one party over another, while other states may be more variable. 
+
+Our estimated parameters are: 
+$$
+\hat{Y}_{ij} = 0.5 - 0.00066(pctRep8_{ij}) - 0.0078(pctRep12_{ij}) - 0.013(Time_{ij}),
+$$
+where $\hat{\sigma}_{\zeta_{1j}}^2 = 0.0015$, $\hat{\sigma}_{\zeta_{0j}}^2 = 0.0008$, and $\hat{\epsilon}_{ij} = 0.0007$. It appears that percent Republican in 2012 is significantly and negatively associated with percent Democrat in 2016. 
+
+```{r results='hide', message=FALSE, warning=FALSE}
+head(data2)
+## random intercept, random slopes, covariates
+fit.cov1 <- lmer(DemPctHead2Head ~ I(date/365) + pctRep08 + pctRep12 + (I(date/365) | id), data = data2, subset = date > -250) 
+summary(fit.cov1)
+
+## fitting the same model in lme to get p-values
+summary(lme(DemPctHead2Head ~ I(date/365) + pctRep08 + pctRep12, random = ~ I(date/365) | id, data = data2, subset = date > -250)) 
+
+```
+
+**2. Quadratic Model**
+
+We add a quadratic growth to the model: 
+$$
+Y_{ij} = b_0 + b_1(pctRep8_{ij}) + b_2(pctRep12_{ij}) + b_3(Time_{ij}) + b_4(Time_{ij}^2) + \zeta_{3j}(Time_{ij}) + \zeta_{0j} + \epsilon_{ij}
+$$
+
+Estimated parameters are:
+$$
+\hat{Y}_{ij} = 0.5 - 0.00075(pctRep8_{ij}) - 0.0077(pctRep12_{ij}) + 0.038(Time_{ij}) + 0.093(Time_{ij}^2),
+$$
+where variance of random effects remain approximately the same as before (only slightly decreased): $\hat{\sigma}_{\zeta_{1j}}^2 = 0.0015$, $\hat{\sigma}_{\zeta_{0j}}^2 = 0.0008$, and $\hat{\epsilon}_{ij} = 0.0007$. It appears that now, pctRep12 as well as $Time^2$ are significant ($p<0.05$), and Time is somehwat significant ($p<0.1$). 
+
+```{r results='hide', message=FALSE, warning=FALSE}
+## adding quadratic growth 
+fit.cov2 <- lmer(DemPctHead2Head ~ I(date/365) + I((date/365)^2) + pctRep08 + pctRep12 + (I(date/365) | id), data = data2, subset = date > -250) 
+summary(fit.cov2)
+
+summary(lme(DemPctHead2Head ~ I(date/365) + I((date/365)^2) + pctRep08 + pctRep12, random = ~ I(date/365) | id, data = data2, subset = date > -250))
+```
+
+**3. Quadratic Model with Random Slopes, without $Time^2$**
+$$
+Y_{ij} = b_0 + b_1(pctRep8_{ij}) + b_2(pctRep12_{ij}) + b_3(Time_{ij}) + \zeta_{3j}(Time_{ij}) + \zeta_{4j}(Time_{ij}^2) + \zeta_{0j} + \epsilon_{ij}
+$$
+
+**4. Quadratic Model with Random Slopes, with $Time^2$**
+$$
+Y_{ij} = b_0 + b_1(pctRep8_{ij}) + b_2(pctRep12_{ij}) + b_3(Time_{ij}) + b_4(Time_{ij}^2) + \zeta_{3j}(Time_{ij}) + \zeta_{4j}(Time_{ij}^2) + \zeta_{0j} + \epsilon_{ij}
+$$
+
+```{r results='hide', message=FALSE, warning=FALSE}
+## model 3. adding quadratic growth and new random slopes
+fit.cov3 <- lmer(DemPctHead2Head ~ I(date/365)  + pctRep08 + pctRep12 + (I(date/365) + I((date/365)^2) | id), data = data2, subset = date > -250) 
+summary(fit.cov3)
+
+
+## model 4. 
+fit.cov4 <- lmer(DemPctHead2Head ~ I(date/365) + I((date/365)^2) + pctRep08 + pctRep12 + (I(date/365) + I((date/365)^2) | id), data = data2, subset = date > -250) 
+```
+
+
+**Model Comparison and Selection**
+
+It appears that model 3 (quadratic growth and two random slopes without fixed $Time^2$ variable) fit well among the models we have tried. 
+```{r results='hide', message=FALSE, warning=FALSE}
+## likelihood ratio test
+lrtest(fit.cov1, fit.cov2) # reject null
+lrtest(fit.cov1, fit.cov3) # reject null
+lrtest(fit.cov2, fit.cov3) # reject null
+lrtest(fit.cov3, fit.cov4) # fail to reject. suggests that we go with model 3. 
+extractAIC(fit.cov1)
+extractAIC(fit.cov2)
+extractAIC(fit.cov3)
+extractAIC(fit.cov4) 
+```
+
+
+
+**Stan**
+```{r engine='cat', engine.opts=list(file = "mod0.stan", lang = "stan")}
+
+stanMLM <- "data {
+    int<lower=0> N;   // number of obs
+    int<lower=1> K;   // number of predictors
+    int<lower=0> M;   // number of groups (states)
+
+    matrix[N,K] x; 
+    vector[N] y;        // outcomes
+    int<lower=1> id[N]; // unique group ID
+
+    int<lower=0> N_new;     //number of predictions (one for each state)
+    matrix[N_new, K] x_new;  //covariate matrix for predictions
+}
+
+parameters {
+    vector[K] beta;           // coefficients
+    real<lower=0> omega_alpha0;
+    real<lower=0> omega_alphaT;
+    real<lower=-1, upper=1> cor_alpha0T; 
+    
+    real<lower=0> sig_eps;    // y eq: variation of error
+    vector[2] alpha[M];       //random intercept and slope //
+    vector[N_new] y_new;      // predictions for each state
+}
+
+
+transformed parameters { 
+    vector[N] theta;          // mean pred line
+    vector[N_new] theta_new;  
+
+    matrix[2,2] sigma;
+    vector[2] mu;
+    sigma[1,1] <- pow(omega_alpha0,2);
+    sigma[2,2] <- pow(omega_alphaT,2);
+    sigma[1,2] <- cor_alpha0T * omega_alpha0 * omega_alphaT;
+    sigma[2,1] <- cor_alpha0T * omega_alpha0 * omega_alphaT;
+
+    mu[1] <- beta[1];
+    mu[2] <- beta[2];
+
+    for (i in 1:N){
+    theta[i] <- alpha[id[i]][1] + alpha[id[i]][2]*x[i,2] + beta[2]*x[i,2] + beta[3]*x[i,3] + beta[4]*x[i,4] + beta[5]*x[i,5] + beta[6]*x[i,6];
+    }
+
+    for (i in 1:N_new){
+    theta_new[i] <- alpha[id[i]][1] + alpha[id[i]][2]*0 + beta[2]*0 + beta[3]*x_new[i,3] + beta[4]*x_new[i,4] + beta[5]&x_new[i,5] + beta[6]*x_new[i,6];
+    }
+}
+
+
+model {
+    omega_alpha0 ~ cauchy(0,5);
+    omega_alphaT ~ cauchy(0,5); 
+    sig_eps ~ cauchy(0,5); //same
+
+    y ~ normal(theta, sig_eps);  // simple normal model for outcome
+    y_new ~ normal(theta_new, sig_eps); 
+
+    for (i in 1:M){
+       alpha[i] ~ multi_normal(mu, sigma);
+    }
+}"
+
+
+
+
+set.seed(12345)
+M <- length(unique(data2$id)); M 
+N <- nrow(data2); N
+x <- model.matrix( ~ 1 + date + pctRep12 + pctRep08, data2)
+K <- ncol(x); K
+
+# prediction matrix
+z1 <- tapply(data2$pctRep08, data2$id, "[", 1); z1
+z2 <- tapply(data2$pctRep12, data2$id, "[", 1)
+x_new <- model.matrix(~ 1 + rep(0,50) + z1 + z2); x_new
+N_new <- length(z1); N_new # number of predictions to make
+y <- data2$DemPctHead2Head; length(y)
+id <- data2$id
+
+dat1 <- list(y=y, x=x, x_new = x_new, N_new = N_new, M=M, N=N, K=K, id=id)
+dat1
+
+
+fit_stanMLM <- stan(model_code = stanMLM, fit = NULL, model_name = "MLM", data = dat1, iter = 2000, chains = 3, sample_file = 'MLM.csv', verbose = TRUE)
+print(fit_stanMLM, pars=c("beta", "y_new", "sig_eps", "sigma"), digits = 6) 
+saveRDS(fit_stanMLM, "fit_stanMLM.rds")
+readRDS("fit_stanMLM.rds")
+
+
+fit.sims <- extract(fit_stanMLM,permuted=TRUE)
+
+
+# sanity check
+summary(lmer(DemPctHead2Head ~ date + pctRep12 + pctRep08 + (date |id), data = data2))
+
+
+## miscellaneous
+print(fit_stanMLM, pars="y_new")           # printing state by state predictions
+state.preds <- colMeans(fit.sims$y_new)    # extracting vector of state predictions
+state.by.id <- tapply(data2$state, data2$id, "[", 1)  # linking states with their id numbers
+preds <- cbind.data.frame("state"=state.by.id,"pctDem"=state.preds)
+preds
+```
+
+
+
+
+Graphing State Results
+```{r}
+plot(y=row.names(preds[(preds[,2]>=.5),1]), x=preds[(preds[,2]>=.5),2], col="blue", xlim=c(.25, .75),xlab="Percent Democrat", ylab="State")
+points(y=row.names(preds[(preds[,2]<.5),1]), x=preds[(preds[,2]<.5),2], col="red")
+abline(v=0.5)
+
+
+# MAP PLOT #
+library(maps)         # installing necessary packages
+library(mapproj)
+library(RColorBrewer)
+data(state)           # making state map file available 
+
+
+# extracting names of regions in the map
+mapnames = map("state", plot=FALSE)$names 
+mapnames
+
+
+# disconnected regions (i.e. long island) are listed seperately from the rest of the state
+# removing the region so that only the actual state is listed
+mapnames.state = ifelse(regexpr(":",mapnames) < 0,mapnames, substr(mapnames, 1, regexpr(":",mapnames)-1))
+
+
+# linking colors to state predictions
+red.blue <- colorspace::diverge_hsv(4)
+
+predsRD = ifelse(preds[,2] < .5, "red", "blue") # dichotomizing prediction results
+repubs <- which(preds[,2] < .5)
+dems <- which(preds[,2] >= .5)
+
+predsRD[repubs] = ifelse(preds[preds[,2] < .5, 2] > .48, red.blue[3], red.blue[4])
+predsRD[dems] = ifelse(preds[preds[,2] > .5, 2] < .52, red.blue[2], red.blue[1])
+
+cols = predsRD[match(mapnames.state,preds[,1])] 
+map("state", fill=TRUE, col=cols, proj="albers", param=c(35,50))
+
+
+```
+
