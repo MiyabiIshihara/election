@@ -1,35 +1,42 @@
 ---
-title: "MLM"
-author: "Bae No.2"
-date: "October 25, 2016"
+title: "Multilevel Model Project"
+author: "chuan-Ya Hsu, Dana Weisenfield, Diana Ma, Miyabi Ishihara"
+date: "December 2016"
 output: html_document
 ---
 
-
-
-```{r load-packages, message=FALSE, warning=FALSE}
+```{r load-packages, message=FALSE, warning=FALSE, echo = FALSE}
 library(rstan)
 library(lme4)
 library(foreign)
 library(nlme)
 library(lmtest)
 library(plyr)
+library(maps)         # installing necessary packages
+library(mapproj)
+library(RColorBrewer)
 ```
 
-
 ```{r results='hide', message=FALSE, warning=FALSE}
-data2 <- read.dta("Election2016.dta")
+data2 <- read.dta("Election2016.dta") 
 #data <- read.dta("votesRepubThru2012.dta")
 edu <- read.csv("education_level_state.csv")
-gen.age <- read.csv("sex_origin.csv")
+census <- read.csv("census_data.csv")
 unique(data2$pctRep12)
 
-
+# merging edu and data2
 edu$state <- tolower(edu$state)
 data2 <- merge(data2, edu, by = "state")
 data2 <- rename(data2, c("highschool_higher_percent" = "HS", "bachelor_higher_percent" = "BS"))
 head(data2)
 
+# merging census and data2
+head(census)
+census <- rename(census, c("STATE" = "state"))
+census$state <- tolower(census$state) 
+data2 <- merge(data2, census, by = "state")
+
+head(data2)
 ```
 
 
@@ -150,7 +157,7 @@ stanMLM <- "data {
     vector[N] y;        // outcomes
     int<lower=1> id[N]; // unique group ID
 
-    int<lower=0> N_new;     //number of predictions (one for each state)
+    int<lower=0> N_new;      // number of predictions (one for each state)
     matrix[N_new, K] x_new;  //covariate matrix for predictions
 }
 
@@ -181,11 +188,11 @@ transformed parameters {
     mu[2] <- beta[2];
 
     for (i in 1:N){
-    theta[i] <- alpha[id[i]][1] + alpha[id[i]][2]*x[i,2] + beta[2]*x[i,2] + beta[3]*x[i,3] + beta[4]*x[i,4] + beta[5]*x[i,5] + beta[6]*x[i,6];
+    theta[i] <- alpha[id[i]][1] + alpha[id[i]][2]*x[i,2] + beta[3]*x[i,3] + beta[4]*x[i,4] + beta[5]*x[i,5] + beta[6]*x[i,6] + beta[7]*x[i,7] + beta[8]*x[i,8] + beta[9]*x[i,9] + beta[10]*x[i,10] + beta[11]*x[i,11];
     }
 
     for (i in 1:N_new){
-    theta_new[i] <- alpha[id[i]][1] + alpha[id[i]][2]*0 + beta[2]*0 + beta[3]*x_new[i,3] + beta[4]*x_new[i,4] + beta[5]&x_new[i,5] + beta[6]*x_new[i,6];
+    theta_new[i] <- alpha[id[i]][1] + alpha[id[i]][2]*0 + beta[2]*0 + beta[3]*x_new[i,3] + beta[4]*x_new[i,4] + beta[5]*x_new[i,5] + beta[6]*x_new[i,6] + beta[7]*x_new[i,7] + beta[8]*x_new[i,8] + beta[9]*x_new[i,9] + beta[10]*x_new[i,10] + beta[11]*x_new[i,11];
     }
 }
 
@@ -202,20 +209,28 @@ model {
        alpha[i] ~ multi_normal(mu, sigma);
     }
 }"
+```
 
 
 
-
+```{r}
 set.seed(12345)
 M <- length(unique(data2$id)); M 
 N <- nrow(data2); N
-x <- model.matrix( ~ 1 + date + pctRep12 + pctRep08, data2)
+x <- model.matrix( ~ 1 + date + pctRep12 + pctRep08 + HS + BS + black_prop + asian_prop + age_prop + sex_prop + origin_prop, data2)
 K <- ncol(x); K
 
 # prediction matrix
 z1 <- tapply(data2$pctRep08, data2$id, "[", 1); z1
-z2 <- tapply(data2$pctRep12, data2$id, "[", 1)
-x_new <- model.matrix(~ 1 + rep(0,50) + z1 + z2); x_new
+z2 <- tapply(data2$pctRep12, data2$id, "[", 1); z2
+z3 <- tapply(data2$HS, data2$id, "[", 1); z3
+z4 <- tapply(data2$BS, data2$id, "[", 1); z4
+z5 <- tapply(data2$black_prop, data2$id, "[", 1); z5
+z6 <- tapply(data2$BS, data2$asian_prop, "[", 1); z6
+z7 <- tapply(data2$HS, data2$age_prop, "[", 1); z7
+z8 <- tapply(data2$BS, data2$sex_prop, "[", 1); z8
+z9 <- tapply(data2$BS, data2$origin_prop, "[", 1); z9
+x_new <- model.matrix(~ 1 + rep(0,50) + z1 + z2 + z3 + z4 + z5 + z6 + z7 + z8 + z9); x_new
 N_new <- length(z1); N_new # number of predictions to make
 y <- data2$DemPctHead2Head; length(y)
 id <- data2$id
@@ -223,26 +238,31 @@ id <- data2$id
 dat1 <- list(y=y, x=x, x_new = x_new, N_new = N_new, M=M, N=N, K=K, id=id)
 dat1
 
-
 fit_stanMLM <- stan(model_code = stanMLM, fit = NULL, model_name = "MLM", data = dat1, iter = 2000, chains = 3, sample_file = 'MLM.csv', verbose = TRUE)
+
+traceplot(fit_stanMLM, inc_warmup = TRUE)
+
 print(fit_stanMLM, pars=c("beta", "y_new", "sig_eps", "sigma"), digits = 6) 
-saveRDS(fit_stanMLM, "fit_stanMLM.rds")
-readRDS("fit_stanMLM.rds")
+saveRDS(fit_stanMLM, "fit_stanMLM_edu.rds")
+b <- readRDS("fit_stanMLM.rds")
+
+```
 
 
-fit.sims <- extract(fit_stanMLM,permuted=TRUE)
-
-
+Sanity Check
+```{r}
 # sanity check
-summary(lmer(DemPctHead2Head ~ date + pctRep12 + pctRep08 + (date |id), data = data2))
+summary(lmer(DemPctHead2Head ~ date + pctRep12 + pctRep08 + HS + BS + (date |id), data = data2))
+
+summary(lmer(DemPctHead2Head ~ date + pctRep12 + pctRep08 + HS + BS + black_prop + asian_prop + age_prop + sex_prop + origin_prop + (date |id), data = data2))
+
+summary(lme(DemPctHead2Head ~ date + pctRep12 + pctRep08 + HS + BS + black_prop + asian_prop + age_prop + sex_prop + origin_prop, random = ~ date|id, data = data2))
 
 
 ## miscellaneous
-print(fit_stanMLM, pars="y_new")           # printing state by state predictions
-state.preds <- colMeans(fit.sims$y_new)    # extracting vector of state predictions
-state.by.id <- tapply(data2$state, data2$id, "[", 1)  # linking states with their id numbers
-preds <- cbind.data.frame("state"=state.by.id,"pctDem"=state.preds)
-preds
+print(fit_stanMLM, pars = "y_new")           # printing state by state predictions
+fit.sims <- extract(fit_stanMLM, permuted=TRUE)
+
 ```
 
 
@@ -250,18 +270,62 @@ preds
 
 Graphing State Results
 ```{r}
-plot(y=row.names(preds[(preds[,2]>=.5),1]), x=preds[(preds[,2]>=.5),2], col="blue", xlim=c(.25, .75),xlab="Percent Democrat", ylab="State")
+## 
+state.preds <- colMeans(fit.sims$y_new)    # extracting vector of state predictions
+state.by.id <- tapply(data2$state, data2$id, "[", 1)  # linking states with their id numbers
+preds <- cbind.data.frame("state"=state.by.id,"pctDem"=state.preds)
+preds <- preds[order(preds$pctDem), ]
+preds$order_state <- seq(1,50,1)
+rownames(preds) = 1:50
+
+
+new_y <- extract(fit_stanMLM, pars = "y_new")
+pred <- apply(new_y[[1]], 2, quantile, probs = c(0.025, 0.5, 0.975))
+pred <- t(pred)
+colnames(pred) <- c("lower", "center", "upper")
+pred <- as.data.frame(pred)
+pred <- pred[order(pred$center), ]
+pred$order_state <- seq(1,50,1)
+rownames(pred) = 1:50
+pred
+
+preds <- merge(pred, preds, by = "order_state")
+preds
+
+
+
+## better plot
+
+
+p <- ggplot(data = preds, aes(x = center, y = reorder(state, center))) 
+p <- p + geom_errorbarh(aes(xmin = lower, xmax = upper), colour = 'gray80')
+p <- p + geom_point(aes(x = center, y = reorder(state, center), color = center))
+p <- p + xlab("Pr(Clinton wins)") + ylab("")
+p <- p +  guides(color = FALSE)
+p <- p + scale_color_gradientn(colours = c("red", "blue"))
+p <- p + geom_vline(xintercept = 0.5, colour = "gray90", aes(size = 1))
+p <- p + theme(panel.background = element_rect(fill = 'gray97', colour = 'white'))
+p 
+
+
+## simple plot
+plot(y = row.names(preds[(preds[,2]>=.5),1]), x = preds[(preds[,2]>=.5),2], col="blue", xlim=c(.25, .75), xlab="Percent Democrat", ylab="State")
 points(y=row.names(preds[(preds[,2]<.5),1]), x=preds[(preds[,2]<.5),2], col="red")
 abline(v=0.5)
 
 
+plot(fit_stanMLM , pars = c("y_new", "sig_eps"))
+
+```
+
+
+
+
+
+Map Plot
+```{r}
 # MAP PLOT #
-library(maps)         # installing necessary packages
-library(mapproj)
-library(RColorBrewer)
 data(state)           # making state map file available 
-
-
 # extracting names of regions in the map
 mapnames = map("state", plot=FALSE)$names 
 mapnames
@@ -287,4 +351,5 @@ map("state", fill=TRUE, col=cols, proj="albers", param=c(35,50))
 
 
 ```
+
 
