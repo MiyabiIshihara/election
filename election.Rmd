@@ -5,6 +5,28 @@ date: "December 2016"
 output: html_document
 ---
 
+**Objective**
+The aim of this project is to predict the results of the 2016 United States presidential election using Bayesian modeling. The framework for our analysis is the election prediction model used by Nate Silver’s FiveThirtyEight.com. R and Stan were used to implement the Bayesian model and visually display the results. Bayesian modelling is appropriate for predicting election results because it can account for the uncertainty in polls and  ...
+
+**Data**
+The data come from three different sources. Polling data and results from past elections were obtained from data compiled by Marc Scott for Multi-level Models: Growth Curves. State-level demographic variables came from the Census. 
+WHERE DID EDUCATION VARIABLES COME FROM?
+
+- Date
+- pctRep08: percentage of Republicans in 2008
+- pctRep12: percentage of Republicans in 2012
+- Percentage of people who received high school diploma 
+- Percentage of people who received bachelor’s degree
+- Percentage of Blacks or African Americans
+- Percentage of Asians, American Indian, Native Hawaiian and other Pacific Islanders, or those of two+ races
+- Percentage of Hispanics
+- Percentage of people age < 35 
+- Percentage of female 
+
+
+**Methodology**
+
+We used the following packages for our analysis
 ```{r load-packages, message=FALSE, warning=FALSE, echo = FALSE}
 library(rstan)
 library(lme4)
@@ -12,12 +34,18 @@ library(foreign)
 library(nlme)
 library(lmtest)
 library(plyr)
-library(maps)         # installing necessary packages
+library(maps)         
 library(mapproj)
 library(RColorBrewer)
 ```
 
+Prior to fitting a Bayesian model in Stan, we first fit a non-Bayesian multi-level model using the lmer package in R. 
+Results from lmer were used to verify that the results from the Bayesian models were reasonable. 
+
+
 ```{r results='hide', message=FALSE, warning=FALSE}
+setwd("/Users/dlweisenfeld/Documents/GrowthCurvesPracticum")
+
 data2 <- read.dta("Election2016.dta") 
 #data <- read.dta("votesRepubThru2012.dta")
 edu <- read.csv("education_level_state.csv")
@@ -40,14 +68,13 @@ head(data2)
 ```
 
 
-
 **0. Unconditional Model**
 
 We first fit an unconditional model with varying intercepts. Let $i$ indicate poll and $j$ indicate state, then percent Democrat $Y_{ij}$ is modeled as: 
 $$
 Y_{ij} = b_0 + \zeta_{0j} + \epsilon_{ij},
 $$
-where $\zeta_{0j} \sim N(0,\sigma_{\zeta_0}^2)$ and $\epsilon_{ij} \sim N(0, \sigma_{\epsilon}^2)$, independently of one another. ICC is 0.915, meaning that $91.5 \%$ of the variance is explained by between states. 
+where $\zeta_{0j} \sim N(0,\sigma_{\zeta_0}^2)$ and $\epsilon_{ij} \sim N(0, \sigma_{\epsilon}^2)$, independently of one another. ICC is 0.915, meaning that $91.5 \%$ of the variance is explained by between states. This indicates that accounting for the hierarchical structure of the data is necessary. 
 
 
 ```{r results='hide', message=FALSE, warning=FALSE}
@@ -144,6 +171,18 @@ extractAIC(fit.cov4)
 ```
 
 
+The simplest model Bayesian model we looked at included random intercepts for each state as well as three predictors--date of the poll and percent of the state that voted Republican in both 2008 and 2012. This simple model overestimated the share of the Democratic vote; even solidly red states such as Indiana were predicted to go blue in 2016. 
+
+After successfully fitting a random intercept model, random slopes were added. In comparison to the random intercept model, adding random slopes slightly improved predictions. 
+- explain why random slopes are theoretically important for this model
+- include mathematical notation for random slope
+- results from random slope model
+
+However, the model with random slopes and random intercepts still overpredicted Democratic percentages. To try and improve predictions we added state-level predictors to the model. Since education was found to be such a big determinant of election behavior, we surmised that education variables would improve state predictions. In addition to variables containing the proportion of state residents with a high school and college education, variables on the age, gender, and racial makeup of the state were also added. Specifically, variables containing the proportion of black citizens, the proportion of all other minority citizens, the proportion of citizens under 35, the proportion of females, and the proportion of citizens of Hispanic origin were added to the model. However, adding these variables resulted in convergence problems. 
+
+The model output showed that the intercept and the coefficient on high school education had very small effective sample sizes. An examination of the trace plots also showed extremely poor convergence on these variables. Additional diagnostics showed that the intercept was highly correlated with high school education. However, removing the high school education variable from the model did not improve convergence. After removing high school education the intercept was highly correlated with college education and the trace plots still indicated poor convergence. This occurred even after imposing independence on the random intercept and random slope. Other combinations of covariates that did not include either education variable also resulted in convergence problems. No matter what variables were included, the intercept always ended up being correlated with some covariate and having a very small effective sample size. Doubling the number of iterations from 2,000 to 4,000 did not improve convergence.  
+
+Finally, an attempt was made to fix alpha to be zero add the intercept term in to theta directly. While this improved convergence, the intercept and coefficient were then negative, which does not make sense. Since our attempts to add covariates were unsuccessfully, we are reporting the results from the random intercept, random slope model with three covariates. 
 
 **Stan**
 ```{r engine='cat', engine.opts=list(file = "mod0.stan", lang = "stan")}
@@ -212,8 +251,7 @@ model {
 ```
 
 
-
-```{r}
+```{r, echo=FALSE, eval=FALSE}
 set.seed(12345)
 M <- length(unique(data2$id)); M 
 N <- nrow(data2); N
@@ -236,21 +274,25 @@ y <- data2$DemPctHead2Head; length(y)
 id <- data2$id
 
 dat1 <- list(y=y, x=x, x_new = x_new, N_new = N_new, M=M, N=N, K=K, id=id)
-dat1
+#dat1
 
-fit_stanMLM <- stan(model_code = stanMLM, fit = NULL, model_name = "MLM", data = dat1, iter = 2000, chains = 3, sample_file = 'MLM.csv', verbose = TRUE)
+#fit_stanMLM <- stan(model_code = stanMLM, fit = NULL, model_name = "MLM", data = dat1, iter = 2000, chains = 3, sample_file = 'MLM.csv', verbose = TRUE)
 
-traceplot(fit_stanMLM, inc_warmup = TRUE)
-
+#traceplot(fit_stanMLM, inc_warmup = TRUE)
+fit_stanMLM <- readRDS("results_4covars")
 print(fit_stanMLM, pars=c("beta", "y_new", "sig_eps", "sigma"), digits = 6) 
-saveRDS(fit_stanMLM, "fit_stanMLM_edu.rds")
-b <- readRDS("fit_stanMLM.rds")
+#saveRDS(fit_stanMLM, "fit_stanMLM_edu.rds")
+#b <- readRDS("fit_stanMLM.rds")
+```
 
+```{r stan, echo=FALSE}
+fit_stanMLM <- readRDS("results1208.Rds")
+print(fit_stanMLM, pars=c("beta", "y_new", "sig_eps", "sigma")) 
 ```
 
 
 Sanity Check
-```{r}
+```{r, echo=FALSE}
 # sanity check
 summary(lmer(DemPctHead2Head ~ date + pctRep12 + pctRep08 + HS + BS + (date |id), data = data2))
 
@@ -262,15 +304,14 @@ summary(lme(DemPctHead2Head ~ date + pctRep12 + pctRep08 + HS + BS + black_prop 
 ## miscellaneous
 print(fit_stanMLM, pars = "y_new")           # printing state by state predictions
 fit.sims <- extract(fit_stanMLM, permuted=TRUE)
-
 ```
 
 
 
 
 Graphing State Results
-```{r}
-## 
+```{r, eval=FALSE, echo=FALSE}
+
 state.preds <- colMeans(fit.sims$y_new)    # extracting vector of state predictions
 state.by.id <- tapply(data2$state, data2$id, "[", 1)  # linking states with their id numbers
 preds <- cbind.data.frame("state"=state.by.id,"pctDem"=state.preds)
@@ -320,15 +361,13 @@ plot(fit_stanMLM , pars = c("y_new", "sig_eps"))
 
 
 
-
-
 Map Plot
-```{r}
+```{r, eval=FALSE, echo=FALSE}
 # MAP PLOT #
 data(state)           # making state map file available 
 # extracting names of regions in the map
 mapnames = map("state", plot=FALSE)$names 
-mapnames
+#mapnames
 
 
 # disconnected regions (i.e. long island) are listed seperately from the rest of the state
@@ -348,8 +387,27 @@ predsRD[dems] = ifelse(preds[preds[,2] > .5, 2] < .52, red.blue[2], red.blue[1])
 
 cols = predsRD[match(mapnames.state,preds[,1])] 
 map("state", fill=TRUE, col=cols, proj="albers", param=c(35,50))
-
-
 ```
 
 
+```{r, echo=FALSE}
+# ANSWERING QUESTIONS 
+state.by.id <- tapply(data2$state, data2$id, "[", 1)  # linking states with their id numbers
+state_dist <- as.data.frame(fit.sims$y_new) # 
+names(state_dist) <- as.vector(state.by.id)
+
+state_probs <- c()
+for (i in 1:50) {
+  state_probs[i] <- length(state_dist[,i][state_dist[,i] > .5])/length(state_dist[,i])
+} 
+
+# Key swing states in 2016:
+# Florida, Pennsylvania, Ohio, Michigan, Nevada, New Hampshire, North Carolina, Virginia, and Wisconsin
+
+# Probability that Wisconsin, Ohio, and Michigan all go Democrat?
+q2 <- nrow(state_dist[(state_dist$wisconsin > .5) & (state_dist$ohio > .5) & (state_dist$michigan > .5),
+                          c("wisconsin", "ohio", "michigan")])/nrow(state_dist)
+
+# Probability that Florida, Virginia, and Pennsylvania all go Democrat?
+q2 <- nrow(state_dist[(state_dist$florida > .5) & (state_dist$pennsylvania > .5) & (state_dist$virginia > .5),])/nrow(state_dist)
+```
