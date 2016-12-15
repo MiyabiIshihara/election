@@ -1,14 +1,16 @@
 ---
 title: "Multilevel Model Project"
-author: "chuan-Ya Hsu, Dana Weisenfield, Diana Ma, Miyabi Ishihara"
+author: "chuan-Ya Hsu, Dana Weisenfeld, Diana Ma, Miyabi Ishihara"
 date: "December 2016"
 output: html_document
 ---
 
 **Objective**
+
 The aim of this project is to predict the results of the 2016 United States presidential election using Bayesian modeling. The framework for our analysis is the election prediction model used by Nate Silver’s FiveThirtyEight.com. R and Stan were used to implement the Bayesian model and visually display the results. Bayesian modelling is appropriate for predicting election results because it can account for the uncertainty in polls and  ...
 
 **Data**
+
 The data come from three different sources. Polling data and results from past elections were obtained from data compiled by Marc Scott for Multi-level Models: Growth Curves. State-level demographic variables came from the Census. 
 WHERE DID EDUCATION VARIABLES COME FROM?
 
@@ -26,7 +28,6 @@ WHERE DID EDUCATION VARIABLES COME FROM?
 
 **Methodology**
 
-We used the following packages for our analysis
 ```{r load-packages, message=FALSE, warning=FALSE, echo = FALSE}
 library(rstan)
 library(lme4)
@@ -64,6 +65,13 @@ census <- rename(census, c("STATE" = "state"))
 census$state <- tolower(census$state) 
 data2 <- merge(data2, census, by = "state")
 
+# converting proportions to percents so variables are on the same scale
+data2$black_prop <- data2$black_prop*100
+data2$asian_prop <- data2$asian_prop*100
+data2$age_prop <- data2$age_prop*100
+data2$sex_prop <- data2$sex_prop*100
+data2$origin_prop <- data2$origin_prop*100
+
 # head(data2)
 ```
 
@@ -74,10 +82,10 @@ We first fit an unconditional model with varying intercepts. Let $i$ indicate po
 $$
 Y_{ij} = b_0 + \zeta_{0j} + \epsilon_{ij},
 $$
-where $\zeta_{0j} \sim N(0,\sigma_{\zeta_0}^2)$ and $\epsilon_{ij} \sim N(0, \sigma_{\epsilon}^2)$, independently of one another. ICC is 0.915, meaning that $91.5 \%$ of the variance is explained by between states. This indicates that accounting for the hierarchical structure of the data is necessary. 
+where $\zeta_{0j} \sim N(0,\sigma_{\zeta_0}^2)$ and $\epsilon_{ij} \sim N(0, \sigma_{\epsilon}^2)$, independently of one another. The ICC is 0.915, meaning that $91.5 \%$ of the variance is explained by between states. This indicates that accounting for the hierarchical structure of the data is necessary. 
 
 
-```{r results='hide', message=FALSE, warning=FALSE}
+```{r results='hide', message=FALSE, warning=FALSE, echo=FALSE}
 ## Step 1. Run unconditional model
 head(data2)
 ucm <- lmer(DemPctHead2Head ~ (1|id), data = data2)
@@ -87,7 +95,7 @@ summary(ucm)
 
 **1. Model with Covariates and Varying Slopes**
 
-We now fit the following model: 
+We next fit the following model that includes covariates: 
 $$
 Y_{ij} = b_0 + b_1(pctRep8_{ij}) + b_2(pctRep12_{ij}) + b_3(Time_{ij}) + \zeta_{ij}(Time_{ij}) + \zeta_{0j} + \epsilon_{ij}
 $$
@@ -102,7 +110,7 @@ $$
 $$
 where $\hat{\sigma}_{\zeta_{1j}}^2 = 0.0015$, $\hat{\sigma}_{\zeta_{0j}}^2 = 0.0008$, and $\hat{\epsilon}_{ij} = 0.0007$. It appears that percent Republican in 2012 is significantly and negatively associated with percent Democrat in 2016. 
 
-```{r results='hide', message=FALSE, warning=FALSE}
+```{r results='hide', message=FALSE, warning=FALSE, echo=FALSE}
 head(data2)
 ## random intercept, random slopes, covariates
 fit.cov1 <- lmer(DemPctHead2Head ~ I(date/365) + pctRep08 + pctRep12 + (I(date/365) | id), data = data2, subset = date > -250) 
@@ -126,7 +134,7 @@ $$
 $$
 where variance of random effects remain approximately the same as before (only slightly decreased): $\hat{\sigma}_{\zeta_{1j}}^2 = 0.0015$, $\hat{\sigma}_{\zeta_{0j}}^2 = 0.0008$, and $\hat{\epsilon}_{ij} = 0.0007$. It appears that now, pctRep12 as well as $Time^2$ are significant ($p<0.05$), and Time is somewhat significant ($p<0.1$). 
 
-```{r results='hide', message=FALSE, warning=FALSE}
+```{r results='hide', message=FALSE, warning=FALSE, echo=FALSE}
 ## adding quadratic growth 
 fit.cov2 <- lmer(DemPctHead2Head ~ I(date/365) + I((date/365)^2) + pctRep08 + pctRep12 + (I(date/365) | id), data = data2, subset = date > -250) 
 summary(fit.cov2)
@@ -144,7 +152,7 @@ $$
 Y_{ij} = b_0 + b_1(pctRep8_{ij}) + b_2(pctRep12_{ij}) + b_3(Time_{ij}) + b_4(Time_{ij}^2) + \zeta_{3j}(Time_{ij}) + \zeta_{4j}(Time_{ij}^2) + \zeta_{0j} + \epsilon_{ij}
 $$
 
-```{r results='hide', message=FALSE, warning=FALSE}
+```{r results='hide', message=FALSE, warning=FALSE, echo=FALSE}
 ## model 3. adding quadratic growth and new random slopes
 fit.cov3 <- lmer(DemPctHead2Head ~ I(date/365)  + pctRep08 + pctRep12 + (I(date/365) + I((date/365)^2) | id), data = data2, subset = date > -250) 
 summary(fit.cov3)
@@ -171,6 +179,8 @@ extractAIC(fit.cov4)
 ```
 
 
+** Bayesian Modelling **
+
 The simplest model Bayesian model we looked at included random intercepts for each state as well as three predictors--date of the poll and percent of the state that voted Republican in both 2008 and 2012. This simple model overestimated the share of the Democratic vote; even solidly red states such as Indiana were predicted to go blue in 2016. 
 
 After successfully fitting a random intercept model, random slopes were added. In comparison to the random intercept model, adding random slopes slightly improved predictions. 
@@ -187,8 +197,7 @@ Finally, an attempt was made to fix alpha to be zero add the intercept term in t
 **Stan**
 
 ```{r engine='cat', engine.opts=list(file = "mod0.stan", lang = "stan")}
-# MAKE SURE CODE PRESENTED IN WRITE UP IS FOR MODEL RESULTS THAT ARE DISCUSSED 
-# CURRENTLY THIS STAN CODE INCUDES MANY PREDICTORS
+
 
 stanMLM <- "data {
     int<lower=0> N;   // number of obs
@@ -210,7 +219,7 @@ parameters {
     real<lower=-1, upper=1> cor_alpha0T; 
     
     real<lower=0> sig_eps;    // y eq: variation of error
-    vector[2] alpha[M];       //random intercept and slope //
+    vector[2] alpha[M];       //random intercept and slope 
     vector[N_new] y_new;      // predictions for each state
 }
 
@@ -230,15 +239,11 @@ transformed parameters {
     mu[2] <- beta[2];
 
     for (i in 1:N){
-    theta[i] <- alpha[id[i]][1] + alpha[id[i]][2]*x[i,2] + beta[3]*x[i,3] + beta[4]*x[i,4]
-                + beta[5]*x[i,5] + beta[6]*x[i,6] + beta[7]*x[i,7] + beta[8]*x[i,8] + beta[9]*x[i,9]
-                + beta[10]*x[i,10] + beta[11]*x[i,11];
+      theta[i] <- alpha[id[i]][1] + alpha[id[i]][2]*x[i,2] + beta[3]*x[i,3] + beta[4]*x[i,4];
     }
 
     for (i in 1:N_new){
-    theta_new[i] <- alpha[id[i]][1] + alpha[id[i]][2]*0 + beta[2]*0 + beta[3]*x_new[i,3] 
-                    + beta[4]*x_new[i,4] + beta[5]*x_new[i,5] + beta[6]*x_new[i,6] + beta[7]*x_new[i,7] 
-                    + beta[8]*x_new[i,8] + beta[9]*x_new[i,9] + beta[10]*x_new[i,10] + beta[11]*x_new[i,11];
+      theta_new[i] <- alpha[id[i]][1] + alpha[id[i]][2]*0 + beta[2]*0 + beta[3]*x_new[i,3] + beta[4]*x_new[i,4];
     }
 }
 
@@ -293,9 +298,10 @@ fit_stanMLM <- readRDS("results1208.Rds")
 #b <- readRDS("fit_stanMLM.rds")
 ```
 
+Results
 ```{r stan, echo=FALSE, warning=FALSE, message=FALSE}
 fit_stanMLM <- readRDS("results1208.Rds")
-print(fit_stanMLM, pars=c("beta", "sig_eps", "sigma")) 
+print(fit_stanMLM, pars=c("beta", "sig_eps", "sigma"), digits=3) 
 fit.sims <- extract(fit_stanMLM, permuted=TRUE)
 ```
 
@@ -303,7 +309,9 @@ fit.sims <- extract(fit_stanMLM, permuted=TRUE)
 Sanity Check
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 # sanity check
-summary(lmer(DemPctHead2Head ~ date + pctRep12 + pctRep08 + (date |id), data = data2), digits=3)
+stan_check <- summary(lmer(DemPctHead2Head ~ date + pctRep12 + pctRep08 + (date |id), data = data2))
+round(stan_check$coefficients[,1:2], 3)
+stan_check$varcor
 
 #summary(lmer(DemPctHead2Head ~ date + pctRep12 + pctRep08 + HS + BS + black_prop + asian_prop + age_prop + sex_prop + origin_prop + (date |id), data = data2))
 
@@ -314,10 +322,9 @@ summary(lmer(DemPctHead2Head ~ date + pctRep12 + pctRep08 + (date |id), data = d
 #print(fit_stanMLM, pars = "y_new")           # printing state by state predictions
 ```
 
+**Discussion**
 
-
-
-Graphing State Results
+The following graph shows the predicted share of the Democratic vote for each state with 95% credible intervals. 
 ```{r, echo=FALSE}
 state.preds <- colMeans(fit.sims$y_new)    # extracting vector of state predictions
 state.by.id <- tapply(data2$state, data2$id, "[", 1)  # linking states with their id numbers
@@ -348,12 +355,33 @@ preds <- merge(pred, preds, by.x = "order_state", by.y= "order_state")
 p <- ggplot(data = preds, aes(x = center, y = reorder(state, center))) 
 p <- p + geom_errorbarh(aes(xmin = lower, xmax = upper), colour = 'gray80')
 p <- p + geom_point(aes(x = center, y = reorder(state, center), color = center))
-p <- p + xlab("Pr(Clinton wins)") + ylab("")
+p <- p + xlab("Percentage of Clinton Vote") + ylab("")
 p <- p +  guides(color = FALSE)
 p <- p + scale_color_gradientn(colours = c("red", "blue"))
 p <- p + geom_vline(xintercept = 0.5, colour = "gray90", aes(size = 1))
 p <- p + theme(panel.background = element_rect(fill = 'gray97', colour = 'white'))
 p 
+```
+
+Compared to the actual results of the election, our predictions are not very accurate. In particular, our model overpredicts the Democratic share of the vote in most states. On average, our model overpredicted the Democratic share of vote by 4.6%. Although most pollsters overpredicted the share of the Democratic vote, as the following graph shows, our model predicts some swing states to not even have competitive races. In particular, as the following graph shows, Michigan is predicted to have a 100% chance of voting for Hillary Clinton. 
+
+```{r error, echo=FALSE, eval=FALSE}
+# csv that contains that actual vote counts from 2016 and Democratic vote percentages in head-to-head matchup
+# this csv is on my (Dana's) computer and was taken from here: http://cookpolitical.com/story/10174
+# the results are current as of December 7, 2016
+# don't necessarily need any output based on this dataset
+
+results <- read.csv("/Users/dlweisenfeld/Documents/GrowthCurvesPracticum/actual2016results.csv")
+
+results <- results[1:50,] # removing blank extra rows in csv file
+results$State <- gsub("[[:punct:]]", "", results$State) # removing astericks from state name
+results$State <- tolower(results$State)
+results <- results[order(results$State),]
+
+preds <- preds[order(preds$state),]
+
+error <- cbind.data.frame("state" = preds$state, "diff" = (preds$pctDem - results$PctDem))
+#hist(error$diff)
 ```
 
 ```{r probabilities, echo=FALSE}
@@ -367,42 +395,33 @@ for (i in 1:50) {
   state_probs[i] <- length(state_dist[,i][state_dist[,i] > .5])/length(state_dist[,i])
 } 
 
-probs <- cbind(as.vector(state.by.id), state_probs))
+probs <- cbind.data.frame("state" = as.vector(state.by.id), state_probs)
 probs <- probs[order(probs[,2]),]
+
+## gradient colors won't work 
 
 ## probability plot
 
-p <- ggplot(data = probs, aes(x = center, y = reorder(state, center))) 
-p <- p + geom_point(aes(x = center, y = reorder(state, center), color = center))
-p <- p + xlab("Pr(Clinton wins)") + ylab("")
-p <- p +  guides(color = FALSE)
-p <- p + scale_color_gradientn(colours = c("red", "blue"))
-p <- p + geom_vline(xintercept = 0.5, colour = "gray90", aes(size = 1))
-p <- p + theme(panel.background = element_rect(fill = 'gray97', colour = 'white'))
-p 
+q <- ggplot(data = probs, aes(x = state_probs, y = reorder(state, state_probs))) 
+# need to get colors to work
+q <- q + geom_point(aes(x = state_probs, y = reorder(state, state_probs), color=state_probs))
+q <- q + xlab("Pr(Clinton wins)") + ylab("")
+q <- q + scale_color_gradientn(colours = c("red", "blue")) 
+q <- q + guides(color = FALSE)
+q <- q + geom_vline(xintercept = 0.5, colour = "gray90", aes(size = 1))
+q <- q + theme(panel.background = element_rect(fill = 'gray97', colour = 'white'))
+q 
 ```
 
-
-```{r, eval=FALSE, echo=FALSE}
-## simple plot
-plot(y = row.names(preds[(preds[,2]>=.5),1]), x = preds[(preds[,2]>=.5),2], col="blue", xlim=c(.25, .75), xlab="Percent Democrat", ylab="State")
-points(y=row.names(preds[(preds[,2]<.5),1]), x=preds[(preds[,2]<.5),2], col="red")
-abline(v=0.5)
-
-plot(fit_stanMLM , pars = c("y_new", "sig_eps"))
-```
+There are  10 states where the election results are predicted with certainty. Seven of these states are predicted to definitely vote Democratic and three states are predicted to definitely vote Republican. 
 
 
-
-Map Plot
-
+Map Plot - why are there no colors??
 ```{r, echo=FALSE}
-# MAP PLOT #
 data(state)           # making state map file available 
-# extracting names of regions in the map
-mapnames = map("state", plot=FALSE)$names 
-#mapnames
 
+# extracting names of regions in the map
+mapnames = map("state", plot=FALSE)$names       
 
 # disconnected regions (i.e. long island) are listed seperately from the rest of the state
 # removing the region so that only the actual state is listed
@@ -424,6 +443,17 @@ map("state", fill=TRUE, col=cols, proj="albers", param=c(35,50))
 ```
 
 
+```{r snake, echo=FALSE, eval=FALSE}
+# Snake plot
+source("/Users/dlweisenfeld/Documents/GrowthCurvesPracticum/electionFunctions.r")
+
+# arguments for roughSnakePlot : pctDem, StateName, ElectoralVotes
+# snake plot requires the number of electoral votes to be known--don't see this is the data we were given
+
+roughSnakePlot()
+```
+
+
 ```{r, echo=FALSE}
 # ANSWERING QUESTIONS 
 
@@ -437,3 +467,5 @@ q2 <- nrow(state_dist[(state_dist$wisconsin > .5) & (state_dist$ohio > .5) & (st
 # Probability that Florida, Virginia, and Pennsylvania all go Democrat?
 q2 <- nrow(state_dist[(state_dist$florida > .5) & (state_dist$pennsylvania > .5) & (state_dist$virginia > .5),])/nrow(state_dist)
 ```
+
+
