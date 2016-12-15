@@ -43,7 +43,7 @@ Prior to fitting a Bayesian model in Stan, we first fit a non-Bayesian multi-lev
 Results from lmer were used to verify that the results from the Bayesian models were reasonable. 
 
 
-```{r results='hide', message=FALSE, warning=FALSE}
+```{r results='hide', echo=FALSE, message=FALSE, warning=FALSE}
 setwd("/Users/dlweisenfeld/Documents/GrowthCurvesPracticum")
 
 data2 <- read.dta("Election2016.dta") 
@@ -64,7 +64,7 @@ census <- rename(census, c("STATE" = "state"))
 census$state <- tolower(census$state) 
 data2 <- merge(data2, census, by = "state")
 
-head(data2)
+# head(data2)
 ```
 
 
@@ -124,7 +124,7 @@ Estimated parameters are:
 $$
 \hat{Y}_{ij} = 0.5 - 0.00075(pctRep8_{ij}) - 0.0077(pctRep12_{ij}) + 0.038(Time_{ij}) + 0.093(Time_{ij}^2),
 $$
-where variance of random effects remain approximately the same as before (only slightly decreased): $\hat{\sigma}_{\zeta_{1j}}^2 = 0.0015$, $\hat{\sigma}_{\zeta_{0j}}^2 = 0.0008$, and $\hat{\epsilon}_{ij} = 0.0007$. It appears that now, pctRep12 as well as $Time^2$ are significant ($p<0.05$), and Time is somehwat significant ($p<0.1$). 
+where variance of random effects remain approximately the same as before (only slightly decreased): $\hat{\sigma}_{\zeta_{1j}}^2 = 0.0015$, $\hat{\sigma}_{\zeta_{0j}}^2 = 0.0008$, and $\hat{\epsilon}_{ij} = 0.0007$. It appears that now, pctRep12 as well as $Time^2$ are significant ($p<0.05$), and Time is somewhat significant ($p<0.1$). 
 
 ```{r results='hide', message=FALSE, warning=FALSE}
 ## adding quadratic growth 
@@ -185,7 +185,10 @@ The model output showed that the intercept and the coefficient on high school ed
 Finally, an attempt was made to fix alpha to be zero add the intercept term in to theta directly. While this improved convergence, the intercept and coefficient were then negative, which does not make sense. Since our attempts to add covariates were unsuccessfully, we are reporting the results from the random intercept, random slope model with three covariates. 
 
 **Stan**
+
 ```{r engine='cat', engine.opts=list(file = "mod0.stan", lang = "stan")}
+# MAKE SURE CODE PRESENTED IN WRITE UP IS FOR MODEL RESULTS THAT ARE DISCUSSED 
+# CURRENTLY THIS STAN CODE INCUDES MANY PREDICTORS
 
 stanMLM <- "data {
     int<lower=0> N;   // number of obs
@@ -227,11 +230,15 @@ transformed parameters {
     mu[2] <- beta[2];
 
     for (i in 1:N){
-    theta[i] <- alpha[id[i]][1] + alpha[id[i]][2]*x[i,2] + beta[3]*x[i,3] + beta[4]*x[i,4] + beta[5]*x[i,5] + beta[6]*x[i,6] + beta[7]*x[i,7] + beta[8]*x[i,8] + beta[9]*x[i,9] + beta[10]*x[i,10] + beta[11]*x[i,11];
+    theta[i] <- alpha[id[i]][1] + alpha[id[i]][2]*x[i,2] + beta[3]*x[i,3] + beta[4]*x[i,4]
+                + beta[5]*x[i,5] + beta[6]*x[i,6] + beta[7]*x[i,7] + beta[8]*x[i,8] + beta[9]*x[i,9]
+                + beta[10]*x[i,10] + beta[11]*x[i,11];
     }
 
     for (i in 1:N_new){
-    theta_new[i] <- alpha[id[i]][1] + alpha[id[i]][2]*0 + beta[2]*0 + beta[3]*x_new[i,3] + beta[4]*x_new[i,4] + beta[5]*x_new[i,5] + beta[6]*x_new[i,6] + beta[7]*x_new[i,7] + beta[8]*x_new[i,8] + beta[9]*x_new[i,9] + beta[10]*x_new[i,10] + beta[11]*x_new[i,11];
+    theta_new[i] <- alpha[id[i]][1] + alpha[id[i]][2]*0 + beta[2]*0 + beta[3]*x_new[i,3] 
+                    + beta[4]*x_new[i,4] + beta[5]*x_new[i,5] + beta[6]*x_new[i,6] + beta[7]*x_new[i,7] 
+                    + beta[8]*x_new[i,8] + beta[9]*x_new[i,9] + beta[10]*x_new[i,10] + beta[11]*x_new[i,11];
     }
 }
 
@@ -247,7 +254,8 @@ model {
     for (i in 1:M){
        alpha[i] ~ multi_normal(mu, sigma);
     }
-}"
+}
+"
 ```
 
 
@@ -279,47 +287,47 @@ dat1 <- list(y=y, x=x, x_new = x_new, N_new = N_new, M=M, N=N, K=K, id=id)
 #fit_stanMLM <- stan(model_code = stanMLM, fit = NULL, model_name = "MLM", data = dat1, iter = 2000, chains = 3, sample_file = 'MLM.csv', verbose = TRUE)
 
 #traceplot(fit_stanMLM, inc_warmup = TRUE)
-fit_stanMLM <- readRDS("results_4covars")
-print(fit_stanMLM, pars=c("beta", "y_new", "sig_eps", "sigma"), digits = 6) 
+fit_stanMLM <- readRDS("results1208.Rds")
+#print(fit_stanMLM, pars=c("beta", "y_new", "sig_eps", "sigma"), digits = 6) 
 #saveRDS(fit_stanMLM, "fit_stanMLM_edu.rds")
 #b <- readRDS("fit_stanMLM.rds")
 ```
 
-```{r stan, echo=FALSE}
+```{r stan, echo=FALSE, warning=FALSE, message=FALSE}
 fit_stanMLM <- readRDS("results1208.Rds")
-print(fit_stanMLM, pars=c("beta", "y_new", "sig_eps", "sigma")) 
+print(fit_stanMLM, pars=c("beta", "sig_eps", "sigma")) 
+fit.sims <- extract(fit_stanMLM, permuted=TRUE)
 ```
 
 
 Sanity Check
-```{r, echo=FALSE}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 # sanity check
-summary(lmer(DemPctHead2Head ~ date + pctRep12 + pctRep08 + HS + BS + (date |id), data = data2))
+summary(lmer(DemPctHead2Head ~ date + pctRep12 + pctRep08 + (date |id), data = data2), digits=3)
 
-summary(lmer(DemPctHead2Head ~ date + pctRep12 + pctRep08 + HS + BS + black_prop + asian_prop + age_prop + sex_prop + origin_prop + (date |id), data = data2))
+#summary(lmer(DemPctHead2Head ~ date + pctRep12 + pctRep08 + HS + BS + black_prop + asian_prop + age_prop + sex_prop + origin_prop + (date |id), data = data2))
 
-summary(lme(DemPctHead2Head ~ date + pctRep12 + pctRep08 + HS + BS + black_prop + asian_prop + age_prop + sex_prop + origin_prop, random = ~ date|id, data = data2))
+#summary(lme(DemPctHead2Head ~ date + pctRep12 + pctRep08 + HS + BS + black_prop + asian_prop + age_prop + sex_prop + origin_prop, random = ~ date|id, data = data2))
 
 
 ## miscellaneous
-print(fit_stanMLM, pars = "y_new")           # printing state by state predictions
-fit.sims <- extract(fit_stanMLM, permuted=TRUE)
+#print(fit_stanMLM, pars = "y_new")           # printing state by state predictions
 ```
 
 
 
 
 Graphing State Results
-```{r, eval=FALSE, echo=FALSE}
-
+```{r, echo=FALSE}
 state.preds <- colMeans(fit.sims$y_new)    # extracting vector of state predictions
 state.by.id <- tapply(data2$state, data2$id, "[", 1)  # linking states with their id numbers
-preds <- cbind.data.frame("state"=state.by.id,"pctDem"=state.preds)
+preds <- cbind.data.frame("state"=as.vector(state.by.id),"pctDem"=state.preds)
 preds <- preds[order(preds$pctDem), ]
 preds$order_state <- seq(1,50,1)
 rownames(preds) = 1:50
+```
 
-
+```{r, echo=FALSE}
 new_y <- extract(fit_stanMLM, pars = "y_new")
 pred <- apply(new_y[[1]], 2, quantile, probs = c(0.025, 0.5, 0.975))
 pred <- t(pred)
@@ -328,15 +336,14 @@ pred <- as.data.frame(pred)
 pred <- pred[order(pred$center), ]
 pred$order_state <- seq(1,50,1)
 rownames(pred) = 1:50
-pred
+#pred
+```
 
-preds <- merge(pred, preds, by = "order_state")
-preds
+```{r percentages, echo=FALSE}
+preds <- merge(pred, preds, by.x = "order_state", by.y= "order_state")
+#preds
 
-
-
-## better plot
-
+## percentage plot
 
 p <- ggplot(data = preds, aes(x = center, y = reorder(state, center))) 
 p <- p + geom_errorbarh(aes(xmin = lower, xmax = upper), colour = 'gray80')
@@ -347,22 +354,49 @@ p <- p + scale_color_gradientn(colours = c("red", "blue"))
 p <- p + geom_vline(xintercept = 0.5, colour = "gray90", aes(size = 1))
 p <- p + theme(panel.background = element_rect(fill = 'gray97', colour = 'white'))
 p 
+```
+
+```{r probabilities, echo=FALSE}
+# state probabilities of voting Democrat
+state.by.id <- tapply(data2$state, data2$id, "[", 1)  # linking states with their id numbers
+state_dist <- as.data.frame(fit.sims$y_new) # 
+names(state_dist) <- as.vector(state.by.id)
+
+state_probs <- c()
+for (i in 1:50) {
+  state_probs[i] <- length(state_dist[,i][state_dist[,i] > .5])/length(state_dist[,i])
+} 
+
+probs <- cbind(as.vector(state.by.id), state_probs))
+probs <- probs[order(probs[,2]),]
+
+## probability plot
+
+p <- ggplot(data = probs, aes(x = center, y = reorder(state, center))) 
+p <- p + geom_point(aes(x = center, y = reorder(state, center), color = center))
+p <- p + xlab("Pr(Clinton wins)") + ylab("")
+p <- p +  guides(color = FALSE)
+p <- p + scale_color_gradientn(colours = c("red", "blue"))
+p <- p + geom_vline(xintercept = 0.5, colour = "gray90", aes(size = 1))
+p <- p + theme(panel.background = element_rect(fill = 'gray97', colour = 'white'))
+p 
+```
 
 
+```{r, eval=FALSE, echo=FALSE}
 ## simple plot
 plot(y = row.names(preds[(preds[,2]>=.5),1]), x = preds[(preds[,2]>=.5),2], col="blue", xlim=c(.25, .75), xlab="Percent Democrat", ylab="State")
 points(y=row.names(preds[(preds[,2]<.5),1]), x=preds[(preds[,2]<.5),2], col="red")
 abline(v=0.5)
 
-
 plot(fit_stanMLM , pars = c("y_new", "sig_eps"))
-
 ```
 
 
 
 Map Plot
-```{r, eval=FALSE, echo=FALSE}
+
+```{r, echo=FALSE}
 # MAP PLOT #
 data(state)           # making state map file available 
 # extracting names of regions in the map
@@ -392,14 +426,6 @@ map("state", fill=TRUE, col=cols, proj="albers", param=c(35,50))
 
 ```{r, echo=FALSE}
 # ANSWERING QUESTIONS 
-state.by.id <- tapply(data2$state, data2$id, "[", 1)  # linking states with their id numbers
-state_dist <- as.data.frame(fit.sims$y_new) # 
-names(state_dist) <- as.vector(state.by.id)
-
-state_probs <- c()
-for (i in 1:50) {
-  state_probs[i] <- length(state_dist[,i][state_dist[,i] > .5])/length(state_dist[,i])
-} 
 
 # Key swing states in 2016:
 # Florida, Pennsylvania, Ohio, Michigan, Nevada, New Hampshire, North Carolina, Virginia, and Wisconsin
