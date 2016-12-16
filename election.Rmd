@@ -1,32 +1,12 @@
 ---
 title: "Multilevel Model Project"
-author: "chuan-Ya Hsu, Dana Weisenfeld, Diana Ma, Miyabi Ishihara"
+author: "Chuan-Ya Hsu, Dana Weisenfeld, Diana Ma, Miyabi Ishihara"
 date: "December 2016"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
+subtitle: Prediction of the 2016 Election Results
 ---
-
-**Objective**
-
-The aim of this project is to predict the results of the 2016 United States presidential election using Bayesian modeling. The framework for our analysis is the election prediction model used by Nate Silver’s FiveThirtyEight.com. R and Stan were used to implement the Bayesian model and visually display the results. Bayesian modelling is appropriate for predicting election results because it can account for the uncertainty in polls and  ...
-
-**Data**
-
-The data come from three different sources. Polling data and results from past elections were obtained from data compiled by Marc Scott for Multi-level Models: Growth Curves. State-level demographic variables came from the Census. 
-WHERE DID EDUCATION VARIABLES COME FROM?
-
-- Date
-- pctRep08: percentage of Republicans in 2008
-- pctRep12: percentage of Republicans in 2012
-- Percentage of people who received high school diploma 
-- Percentage of people who received bachelor’s degree
-- Percentage of Blacks or African Americans
-- Percentage of Asians, American Indian, Native Hawaiian and other Pacific Islanders, or those of two+ races
-- Percentage of Hispanics
-- Percentage of people age < 35 
-- Percentage of female 
-
-
-**Methodology**
 
 ```{r load-packages, message=FALSE, warning=FALSE, echo = FALSE}
 library(rstan)
@@ -40,9 +20,11 @@ library(mapproj)
 library(RColorBrewer)
 ```
 
-Prior to fitting a Bayesian model in Stan, we first fit a non-Bayesian multi-level model using the lmer package in R. 
-Results from lmer were used to verify that the results from the Bayesian models were reasonable. 
+###Objective
 
+The aim of this project is to predict the results of the 2016 United States presidential election using Bayesian modeling. The framework for our analysis is the election prediction model used by Nate Silver’s FiveThirtyEight website. R and Stan were used to implement the Bayesian model and visually display the results. Bayesian modeling is appropriate for predicting election results because it accounts for the uncertainties in models and parameter values, such as the polls, by incorporating prior information, such as historical election results.
+
+###Data
 
 ```{r results='hide', echo=FALSE, message=FALSE, warning=FALSE}
 setwd("/Users/dlweisenfeld/Documents/GrowthCurvesPracticum")
@@ -76,13 +58,60 @@ data2$origin_prop <- data2$origin_prop*100
 ```
 
 
+The data come from two different sources. Polling data and results from past elections were obtained from data compiled by Marc Scott for the Multi-level Models: Growth Curves class. It should be noted all the poll data came from head-to-head match ups between Hillary Clinton and Donald Trump and do not include third party candidates. State-level demographic variables came from the census. Race, origin, age, and gender came from 2015 census data while education level came from 2011 data.  
+
+* Polling Data
+   + Date
+   + pctRep08: percentage of Republicans in 2008
+   + pctRep12: percentage of Republicans in 2012
+* State-Level Demographic Variables:
+   + Percentage of people who received high school diploma 
+   + Percentage of people who received bachelor’s degree
+   + Percentage of Blacks or African Americans
+   + Percentage of Asians, American Indian, Native Hawaiian and other Pacific Islanders, or those of two+ races
+   + Percentage of Hispanics
+   + Percentage of people age < 35 
+   + Percentage of female 
+
+```{r, echo=FALSE}
+#education
+par(mfrow = c(2, 3))
+plot(density(data2$HS), main = "% of High School or Higher by State", lwd = 3)
+abline(v=88, col = "red" , lty = 3 , lwd = 3)
+plot(density(data2$BS), main = "% of Bachelor's Degree or Higher by State" ,  lwd = 3)
+abline(v = 27.1, col = "red", lty = 3, , lwd = 3)
+#race
+plot(density(data2$asian_prop), main = "% By Race", col = "red", lwd = 3)
+abline(v=6, col = "red", lwd = 3, lty = 3)
+lines(density(data2$black_prop), col = "black", lwd = 3)
+abline(v=8, col = "black", lwd = 3, lty = 3)
+legend("topright", legend = c("Asian, Other", "Black"), lty = c(1, 1), lwd = c(3, 3), col = c("Red", "Black"))
+#origin
+plot(density(data2$origin_prop), main = "% Hispanic Origin", lwd = 3)
+abline(v=8, col = "red", lty = 3, , lwd = 3)
+#age
+plot(density(data2$age_prop), main = "% Younger than 35", lwd = 3)
+abline(v=31, col = "red", lty = 3, , lwd = 3)
+#sex
+plot(density(data2$sex_prop), main = "% Female", lwd = 3)
+abline(v=51, col = "red", lty = 3, , lwd = 3)
+```
+
+As we can see from the distribution of the state-level demographic variables- they vary a lot by state. For high school education or higher, the median percent is 88%, with a range of 80.7% to 92.3%, with highest being Wyoming and lowest being California. For bachelor's degree or higher by state, the median is 27.1%, with a range of 17.5% to 39%, with lowest being West Virginia and highest being Massachusetts. For race, Asian and other seem to cluster in certain states, while Blacks are generally more dispersed. Median percent for Asian and others is 6.19% with a range of 2.18% (West Virginia) to 68.42% (Hawaii). Median percent for Blacks is 7.87%, with a range of 0.56% (Montana) to 35.96% (Mississippi). For Hispanic origin, median percent is 7.89%, with a range of 1.32% (Maine) to 44.67% (New Mexico). For percent younger than 35, median percent is 31.33%, with a range of 25.84% (Maine) to 38.92% (Utah). For sex distribution, there was not much variation overall, with a median of 51.27% and a range of 46.96% (Alaska) to 52.25% (Alabama).
+
+###Methodology
+
+Prior to fitting a Bayesian model in Stan, we first fit a non-Bayesian multi-level model using the *lmer* package in R. Results from *lmer* were used to verify that the results from the Bayesian models were reasonable. 
+
+
+
 **0. Unconditional Model**
 
 We first fit an unconditional model with varying intercepts. Let $i$ indicate poll and $j$ indicate state, then percent Democrat $Y_{ij}$ is modeled as: 
 $$
 Y_{ij} = b_0 + \zeta_{0j} + \epsilon_{ij},
 $$
-where $\zeta_{0j} \sim N(0,\sigma_{\zeta_0}^2)$ and $\epsilon_{ij} \sim N(0, \sigma_{\epsilon}^2)$, independently of one another. The ICC is 0.915, meaning that $91.5 \%$ of the variance is explained by between states. This indicates that accounting for the hierarchical structure of the data is necessary. 
+where $\zeta_{0j} \sim N(0,\sigma_{\zeta_0}^2)$ and $\epsilon_{ij} \sim N(0, \sigma_{\epsilon}^2)$, independently of one another. The ICC is 0.915, meaning $91.5 \%$ of the variance is explained by between states. This indicates accounting for the hierarchical structure of the data is necessary. 
 
 
 ```{r results='hide', message=FALSE, warning=FALSE, echo=FALSE}
@@ -95,20 +124,20 @@ summary(ucm)
 
 **1. Model with Covariates and Varying Slopes**
 
-We next fit the following model that includes covariates: 
+Next, we fit the following model that includes covariates: 
 $$
 Y_{ij} = b_0 + b_1(pctRep8_{ij}) + b_2(pctRep12_{ij}) + b_3(Time_{ij}) + \zeta_{ij}(Time_{ij}) + \zeta_{0j} + \epsilon_{ij}
 $$
 
-We include three covariates -- percent Republican in the years 2008 and 2012, and time of the poll. Time represents the number of days before the actual election, but converted to unit in years. Note that Time is negative and takes 0 on the day of the election. 
+We include three covariates -- percent Republican in the years 2008 and 2012, and time of the poll. Time represents the number of days before the actual election, converted to unit in years. Time is negative and takes 0 on the day of the election. 
 
-We allow slopes of Time to vary by state. This means that we consider the effect of time on percent Democrat to differ by state -- some states may be very stable and always support one party over another, while other states may be more variable. 
+We allow slopes of time to vary by state. This means we consider the effect of time on percent Democrat to differ by state -- some states may be very stable and always support one party over another, while other states may be more variable. 
 
 Our estimated parameters are: 
 $$
 \hat{Y}_{ij} = 0.5 - 0.00066(pctRep8_{ij}) - 0.0078(pctRep12_{ij}) - 0.013(Time_{ij}),
 $$
-where $\hat{\sigma}_{\zeta_{1j}}^2 = 0.0015$, $\hat{\sigma}_{\zeta_{0j}}^2 = 0.0008$, and $\hat{\epsilon}_{ij} = 0.0007$. It appears that percent Republican in 2012 is significantly and negatively associated with percent Democrat in 2016. 
+where $\hat{\sigma}_{\zeta_{1j}}^2 = 0.0015$, $\hat{\sigma}_{\zeta_{0j}}^2 = 0.0008$, and $\hat{\epsilon}_{ij} = 0.0007$. It appears percent Republican in 2012 is significantly and negatively associated with percent Democrat in 2016. 
 
 ```{r results='hide', message=FALSE, warning=FALSE, echo=FALSE}
 head(data2)
@@ -132,7 +161,7 @@ Estimated parameters are:
 $$
 \hat{Y}_{ij} = 0.5 - 0.00075(pctRep8_{ij}) - 0.0077(pctRep12_{ij}) + 0.038(Time_{ij}) + 0.093(Time_{ij}^2),
 $$
-where variance of random effects remain approximately the same as before (only slightly decreased): $\hat{\sigma}_{\zeta_{1j}}^2 = 0.0015$, $\hat{\sigma}_{\zeta_{0j}}^2 = 0.0008$, and $\hat{\epsilon}_{ij} = 0.0007$. It appears that now, pctRep12 as well as $Time^2$ are significant ($p<0.05$), and Time is somewhat significant ($p<0.1$). 
+where variance of random effects remain approximately the same as before (only slightly decreased): $\hat{\sigma}_{\zeta_{1j}}^2 = 0.0015$, $\hat{\sigma}_{\zeta_{0j}}^2 = 0.0008$, and $\hat{\epsilon}_{ij} = 0.0007$. It appears now, pctRep12 as well as $Time^2$ are significant ($p<0.05$), and time is somewhat significant ($p<0.1$). 
 
 ```{r results='hide', message=FALSE, warning=FALSE, echo=FALSE}
 ## adding quadratic growth 
@@ -157,7 +186,6 @@ $$
 fit.cov3 <- lmer(DemPctHead2Head ~ I(date/365)  + pctRep08 + pctRep12 + (I(date/365) + I((date/365)^2) | id), data = data2, subset = date > -250) 
 summary(fit.cov3)
 
-
 ## model 4. 
 fit.cov4 <- lmer(DemPctHead2Head ~ I(date/365) + I((date/365)^2) + pctRep08 + pctRep12 + (I(date/365) + I((date/365)^2) | id), data = data2, subset = date > -250) 
 ```
@@ -165,7 +193,7 @@ fit.cov4 <- lmer(DemPctHead2Head ~ I(date/365) + I((date/365)^2) + pctRep08 + pc
 
 **Model Comparison and Selection**
 
-It appears that model 3 (quadratic growth and two random slopes without fixed $Time^2$ variable) fit well among the models we have tried. 
+Based on AIC and likelihood-ratio tests, tt appears model 3 (quadratic growth and two random slopes without fixed $Time^2$ variable) fits the best among the models we tried. 
 ```{r results='hide', message=FALSE, warning=FALSE}
 ## likelihood ratio test
 lrtest(fit.cov1, fit.cov2) # reject null
@@ -179,26 +207,28 @@ extractAIC(fit.cov4)
 ```
 
 
-** Bayesian Modelling **
+###Bayesian Modeling
 
-The simplest model Bayesian model we looked at included random intercepts for each state as well as three predictors--date of the poll and percent of the state that voted Republican in both 2008 and 2012. This simple model overestimated the share of the Democratic vote; even solidly red states such as Indiana were predicted to go blue in 2016. 
+**Step 1 - Varying Intercepts Mixed Effects Model**
 
-After successfully fitting a random intercept model, random slopes were added. In comparison to the random intercept model, adding random slopes slightly improved predictions. 
-- explain why random slopes are theoretically important for this model
-- include mathematical notation for random slope
-- results from random slope model
+The simplest Bayesian model we looked at includes random intercepts for each state as well as three predictors: date of the poll and percent of the state that voted Republican in 2008 and 2012. This simple model overestimated the share of the Democratic vote; even solidly red states such as Indiana were predicted to go blue in 2016. 
 
-However, the model with random slopes and random intercepts still overpredicted Democratic percentages. To try and improve predictions we added state-level predictors to the model. Since education was found to be such a big determinant of election behavior, we surmised that education variables would improve state predictions. In addition to variables containing the proportion of state residents with a high school and college education, variables on the age, gender, and racial makeup of the state were also added. Specifically, variables containing the proportion of black citizens, the proportion of all other minority citizens, the proportion of citizens under 35, the proportion of females, and the proportion of citizens of Hispanic origin were added to the model. However, adding these variables resulted in convergence problems. 
+**Step 2 - Varying Intercepts, Varying Slopes Mixed Effects Model**
 
-The model output showed that the intercept and the coefficient on high school education had very small effective sample sizes. An examination of the trace plots also showed extremely poor convergence on these variables. Additional diagnostics showed that the intercept was highly correlated with high school education. However, removing the high school education variable from the model did not improve convergence. After removing high school education the intercept was highly correlated with college education and the trace plots still indicated poor convergence. This occurred even after imposing independence on the random intercept and random slope. Other combinations of covariates that did not include either education variable also resulted in convergence problems. No matter what variables were included, the intercept always ended up being correlated with some covariate and having a very small effective sample size. Doubling the number of iterations from 2,000 to 4,000 did not improve convergence.  
+After successfully fitting a random intercept model, random slopes were added. Including random slopes allow for different effects of time for each state. This is important in this context because we understand the relationship between time and endorsement differs by state -- some states consistently endorse one party over another, while others are swing states (e.g. Florida, Pennsylvania, Ohio, Michigan, Nevada, New Hampshire, North Carolina, Virginia, and Wisconsin). In comparison to the random intercept model, adding random slopes slightly improve predictions. 
 
-Finally, an attempt was made to fix alpha to be zero add the intercept term in to theta directly. While this improved convergence, the intercept and coefficient were then negative, which does not make sense. Since our attempts to add covariates were unsuccessfully, we are reporting the results from the random intercept, random slope model with three covariates. 
 
-**Stan**
+**Step 3 - Adding Covariates**
+
+However, the model with random slopes and random intercepts still overpredict Democratic percentages. To try and improve predictions, state-level predictors were added to the model. Since education was found to be a big determinant of voting behavior, we surmised education variables would improve state predictions. In addition to variables containing the proportion of state residents with a high school and college education, variables on the age, gender, origin, and racial makeup of the state were also added. Specifically, variables containing the proportion of black citizens, proportion of all other minority citizens, proportion of citizens under 35, proportion of females, and  proportion of citizens of Hispanic origin were added to the model. However, adding these variables resulted in convergence problems. 
+
+The model output showed the intercept and the coefficient on high school education had very small effective sample sizes. An examination of the trace plots also showed extremely poor convergence on these variables. Additional diagnostics showed the intercept was highly correlated with high school education. However, removing the high school education variable from the model did not improve convergence. After removing high school education, the intercept was highly correlated with college education and trace plots still indicated poor convergence. This occurred even after imposing independence on the random intercept and random slope. Other combinations of covariates that did not include either education variable also resulted in convergence problems as well. No matter what variables were included, the intercept always ended up being correlated with some covariate and having a very small effective sample size. Doubling the number of iterations from 2,000 to 4,000 did not improve convergence.  
+
+Finally, an attempt was made to fix alpha to be zero and add the intercept term in to theta directly. While this improved convergence, the intercept and coefficient turned negative, which does not make sense. Since our attempts to add covariates were unsuccessful, we are reporting the results from the random intercept, random slope model with three predictors. 
+
+**Stan Code**
 
 ```{r engine='cat', engine.opts=list(file = "mod0.stan", lang = "stan")}
-
-
 stanMLM <- "data {
     int<lower=0> N;   // number of obs
     int<lower=1> K;   // number of predictors
@@ -261,6 +291,7 @@ model {
     }
 }
 "
+
 ```
 
 
@@ -268,20 +299,20 @@ model {
 set.seed(12345)
 M <- length(unique(data2$id)); M 
 N <- nrow(data2); N
-x <- model.matrix( ~ 1 + date + pctRep12 + pctRep08 + HS + BS + black_prop + asian_prop + age_prop + sex_prop + origin_prop, data2)
+x <- model.matrix( ~ 1 + date + pctRep12 + pctRep08, data2)
 K <- ncol(x); K
 
 # prediction matrix
 z1 <- tapply(data2$pctRep08, data2$id, "[", 1); z1
 z2 <- tapply(data2$pctRep12, data2$id, "[", 1); z2
-z3 <- tapply(data2$HS, data2$id, "[", 1); z3
-z4 <- tapply(data2$BS, data2$id, "[", 1); z4
-z5 <- tapply(data2$black_prop, data2$id, "[", 1); z5
-z6 <- tapply(data2$BS, data2$asian_prop, "[", 1); z6
-z7 <- tapply(data2$HS, data2$age_prop, "[", 1); z7
-z8 <- tapply(data2$BS, data2$sex_prop, "[", 1); z8
-z9 <- tapply(data2$BS, data2$origin_prop, "[", 1); z9
-x_new <- model.matrix(~ 1 + rep(0,50) + z1 + z2 + z3 + z4 + z5 + z6 + z7 + z8 + z9); x_new
+#z3 <- tapply(data2$HS, data2$id, "[", 1); z3
+#z4 <- tapply(data2$BS, data2$id, "[", 1); z4
+#z5 <- tapply(data2$black_prop, data2$id, "[", 1); z5
+#z6 <- tapply(data2$BS, data2$asian_prop, "[", 1); z6
+#z7 <- tapply(data2$HS, data2$age_prop, "[", 1); z7
+#z8 <- tapply(data2$BS, data2$sex_prop, "[", 1); z8
+#z9 <- tapply(data2$BS, data2$origin_prop, "[", 1); z9
+x_new <- model.matrix(~ 1 + rep(0,50) + z1 + z2); x_new
 N_new <- length(z1); N_new # number of predictions to make
 y <- data2$DemPctHead2Head; length(y)
 id <- data2$id
@@ -289,16 +320,17 @@ id <- data2$id
 dat1 <- list(y=y, x=x, x_new = x_new, N_new = N_new, M=M, N=N, K=K, id=id)
 #dat1
 
-#fit_stanMLM <- stan(model_code = stanMLM, fit = NULL, model_name = "MLM", data = dat1, iter = 2000, chains = 3, sample_file = 'MLM.csv', verbose = TRUE)
+fit_stanMLM <- stan(model_code = stanMLM, fit = NULL, model_name = "MLM", data = dat1, iter = 2000, chains = 3, sample_file = 'MLM.csv', verbose = FALSE)
 
 #traceplot(fit_stanMLM, inc_warmup = TRUE)
 fit_stanMLM <- readRDS("results1208.Rds")
 #print(fit_stanMLM, pars=c("beta", "y_new", "sig_eps", "sigma"), digits = 6) 
-#saveRDS(fit_stanMLM, "fit_stanMLM_edu.rds")
+#saveRDS(fit_stanMLM, "randomslope1215.Rds")
 #b <- readRDS("fit_stanMLM.rds")
 ```
 
-Results
+###Results
+
 ```{r stan, echo=FALSE, warning=FALSE, message=FALSE}
 fit_stanMLM <- readRDS("results1208.Rds")
 print(fit_stanMLM, pars=c("beta", "sig_eps", "sigma"), digits=3) 
@@ -306,12 +338,12 @@ fit.sims <- extract(fit_stanMLM, permuted=TRUE)
 ```
 
 
-Sanity Check
+**Sanity Check**
+
+The results from *lmer* are consistent with the results from Stan. 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 # sanity check
-stan_check <- summary(lmer(DemPctHead2Head ~ date + pctRep12 + pctRep08 + (date |id), data = data2))
-round(stan_check$coefficients[,1:2], 3)
-stan_check$varcor
+lmer(DemPctHead2Head ~ date + pctRep12 + pctRep08 + (date |id), data = data2)
 
 #summary(lmer(DemPctHead2Head ~ date + pctRep12 + pctRep08 + HS + BS + black_prop + asian_prop + age_prop + sex_prop + origin_prop + (date |id), data = data2))
 
@@ -322,9 +354,8 @@ stan_check$varcor
 #print(fit_stanMLM, pars = "y_new")           # printing state by state predictions
 ```
 
-**Discussion**
-
 The following graph shows the predicted share of the Democratic vote for each state with 95% credible intervals. 
+
 ```{r, echo=FALSE}
 state.preds <- colMeans(fit.sims$y_new)    # extracting vector of state predictions
 state.by.id <- tapply(data2$state, data2$id, "[", 1)  # linking states with their id numbers
@@ -346,7 +377,7 @@ rownames(pred) = 1:50
 #pred
 ```
 
-```{r percentages, echo=FALSE}
+```{r percentages, echo=FALSE, fig.height=8}
 preds <- merge(pred, preds, by.x = "order_state", by.y= "order_state")
 #preds
 
@@ -363,7 +394,9 @@ p <- p + theme(panel.background = element_rect(fill = 'gray97', colour = 'white'
 p 
 ```
 
-Compared to the actual results of the election, our predictions are not very accurate. In particular, our model overpredicts the Democratic share of the vote in most states. On average, our model overpredicted the Democratic share of vote by 4.6%. Although most pollsters overpredicted the share of the Democratic vote, as the following graph shows, our model predicts some swing states to not even have competitive races. In particular, as the following graph shows, Michigan is predicted to have a 100% chance of voting for Hillary Clinton. 
+Compared to the actual results of the election, our predictions are not very accurate. In particular, our model overpredicts the Democratic share of the vote in most states. On average, our model overpredicted the Democratic share of the vote by 4.6%. Although most pollsters also overpredicted the share of the Democratic vote, as the above graph shows, our model is predicting some solidly Republican states, such as Indiana and Missouri, to vote for Hillary Clinton. 
+
+The following graph shows the probability that Clinton will win in each state. There are  10 states where the election results are predicted with certainty. Seven of these states are predicted to definitely vote Democrat and three states are predicted to definitely vote Republican. 
 
 ```{r error, echo=FALSE, eval=FALSE}
 # csv that contains that actual vote counts from 2016 and Democratic vote percentages in head-to-head matchup
@@ -377,14 +410,27 @@ results <- results[1:50,] # removing blank extra rows in csv file
 results$State <- gsub("[[:punct:]]", "", results$State) # removing astericks from state name
 results$State <- tolower(results$State)
 results <- results[order(results$State),]
+results <- rename(results, c("PctDem" = "ActPctDem"))
 
 preds <- preds[order(preds$state),]
+pop_vote <- merge(preds[,5:6], results, by.x="state", by.y="State")
+
+fac_to_num <- function(x) { 
+    x <- as.character(x)
+    x <- gsub(",", "", x)  # strips commas from numbers
+    x <- as.numeric(x)
+    return(x)
+}
+
+pop_vote$TotVotes <- fac_to_num(pop_vote$TotVotes)
+vote_dem <- pop_vote$pctDem * pop_vote$TotVotes
+NatlVotePct <- sum(vote_dem)/sum(pop_vote$TotVotes)
 
 error <- cbind.data.frame("state" = preds$state, "diff" = (preds$pctDem - results$PctDem))
 #hist(error$diff)
 ```
 
-```{r probabilities, echo=FALSE}
+```{r probabilities, echo=FALSE, fig.height=8}
 # state probabilities of voting Democrat
 state.by.id <- tapply(data2$state, data2$id, "[", 1)  # linking states with their id numbers
 state_dist <- as.data.frame(fit.sims$y_new) # 
@@ -396,7 +442,7 @@ for (i in 1:50) {
 } 
 
 probs <- cbind.data.frame("state" = as.vector(state.by.id), state_probs)
-probs <- probs[order(probs[,2]),]
+probs <- probs[order(probs$state_probs),]
 
 ## gradient colors won't work 
 
@@ -413,11 +459,9 @@ q <- q + theme(panel.background = element_rect(fill = 'gray97', colour = 'white'
 q 
 ```
 
-There are  10 states where the election results are predicted with certainty. Seven of these states are predicted to definitely vote Democratic and three states are predicted to definitely vote Republican. 
+**State Election Predictions Map**
 
-
-Map Plot - why are there no colors??
-```{r, echo=FALSE}
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.height=7, fig.width=9}
 data(state)           # making state map file available 
 
 # extracting names of regions in the map
@@ -431,37 +475,47 @@ mapnames.state = ifelse(regexpr(":",mapnames) < 0,mapnames, substr(mapnames, 1, 
 # linking colors to state predictions
 red.blue <- colorspace::diverge_hsv(4)
 
-predsRD = ifelse(preds[,2] < .5, "red", "blue") # dichotomizing prediction results
-repubs <- which(preds[,2] < .5)
-dems <- which(preds[,2] >= .5)
+#predsRD = ifelse(preds$pctDem < .5, "red", "blue") # dichotomizing prediction results
+predsRD = c()
+repubs <- which(preds$pctDem < .5)
+dems <- which(preds$pctDem >= .5)
 
-predsRD[repubs] = ifelse(preds[preds[,2] < .5, 2] > .48, red.blue[3], red.blue[4])
-predsRD[dems] = ifelse(preds[preds[,2] > .5, 2] < .52, red.blue[2], red.blue[1])
+predsRD[repubs] = ifelse(preds[preds$pctDem < .5, "pctDem"] > .48, red.blue[3], red.blue[4])
+predsRD[dems] = ifelse(preds[preds$pctDem > .5, "pctDem"] < .52, red.blue[2], red.blue[1])
 
-cols = predsRD[match(mapnames.state,preds[,1])] 
+cols = predsRD[match(mapnames.state,preds$state)] 
 map("state", fill=TRUE, col=cols, proj="albers", param=c(35,50))
 ```
 
+**Snake Plot** 
 
-```{r snake, echo=FALSE, eval=FALSE}
+```{r snake, echo=FALSE, fig.width=9, fig.height=7}
 # Snake plot
 source("/Users/dlweisenfeld/Documents/GrowthCurvesPracticum/electionFunctions.r")
+
+elect_votes <- read.csv("/Users/dlweisenfeld/Documents/GrowthCurvesPracticum/state_electoral_votes.csv", header = FALSE)
+names(elect_votes) <- c("State", "Votes")
+elect_votes$State <- tolower(elect_votes$State)
+preds <- merge(preds, elect_votes, by.x="state", by.y="State")
 
 # arguments for roughSnakePlot : pctDem, StateName, ElectoralVotes
 # snake plot requires the number of electoral votes to be known--don't see this is the data we were given
 
-roughSnakePlot()
+roughSnakePlot(preds$pctDem, preds$state, preds$Votes)
 ```
 
+## Scenarios 
 
-```{r, echo=FALSE}
+Ignoring third party candidates and votes cast in Washington D.C. and other territories, our model predicts Clinton winning 54% of the popular vote. This was caluclated by multiplying the predicted percentages for each state by the total number of votes cast in each state and dividing by the total number of votes cast. 
+
+```{r, echo=FALSE, fig.width=7}
 # ANSWERING QUESTIONS 
 
 # Key swing states in 2016:
 # Florida, Pennsylvania, Ohio, Michigan, Nevada, New Hampshire, North Carolina, Virginia, and Wisconsin
 
 # Probability that Wisconsin, Ohio, and Michigan all go Democrat?
-q2 <- nrow(state_dist[(state_dist$wisconsin > .5) & (state_dist$ohio > .5) & (state_dist$michigan > .5),
+q1 <- nrow(state_dist[(state_dist$wisconsin > .5) & (state_dist$ohio > .5) & (state_dist$michigan > .5),
                           c("wisconsin", "ohio", "michigan")])/nrow(state_dist)
 
 # Probability that Florida, Virginia, and Pennsylvania all go Democrat?
@@ -469,3 +523,21 @@ q2 <- nrow(state_dist[(state_dist$florida > .5) & (state_dist$pennsylvania > .5)
 ```
 
 
+**1) What is the probability Wisconsin, Ohio, and Michigan all go for Hillary?**
+
+Our model predicts an 87% chance that all three states vote Democrat. This was calculated by finding the number of times all three states had predicted percentages greater than 0.5 and dividing by the total number of simulations. This is an unrealistically high probability, partly because Michigan was never predicted to vote for Trump. 
+
+**2) What is the probability Florida, Virginia, and Pennsylvania all go for Hillary?**
+
+Based on our model, there is a 52% chance that the three big swing states all vote Democrat. Individually, the probability Florida votes for Hillary is .57, Virgina has a probability of .93, and Pennsylvania has a probability of .98. 
+
+
+###Discussion
+
+To improve the prediction accuracy of the model, it is important to add correlations in the errors from the early-voting estimates, because it is known states that have similar demographic and geographic factors would have their errors correlated. For instance, if Trump wins in Ohio, it is expected he will probably also win Pennsylvania [1]. If correlations between states are not taken into account, the probability the trailing candidate wins the election would be underestimated. 
+
+In addition, for future analyses, it would be beneficial to figure out why the addition of the covariates resulted in such terrible convergence problems. Moreover, Nate Silver's model adjusted for more poll effects, such as consistent partisan leans, which we did not consider.
+
+
+###References
+[1] Silver, Nate. “A User’s Guide To FiveThirtyEight’s 2016 General Election Forecast.” FiveThirtyEight. 29 Jun. 2016. 14 Dec. 2016. 
